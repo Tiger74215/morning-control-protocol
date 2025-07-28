@@ -1,10 +1,11 @@
-/** @type {import ('next').NextConfig} */
+
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-    output: 'export',
-    trailingSlash: true,
-    images: {
-        unoptomized: true
-    }
+  output: 'export',
+  trailingSlash: true,
+  images: {
+    unoptimized: true
+  }
 }
 
-MediaSourceHandle.exports = nextConfig
+module.exports = nextConfig
