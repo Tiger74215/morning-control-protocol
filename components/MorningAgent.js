@@ -8,7 +8,7 @@ const MorningAgent = () => {
   const [wakeUpTime, setWakeUpTime] = useState(null);
   const [morningPhase, setMorningPhase] = useState('sleeping');
   const [selectedBackground, setSelectedBackground] = useState('gradient-dark');
-  const [useMilitaryTime, setUseMilitaryTime] = useState(true);
+  const [useMilitaryTime, setUseMilitaryTime] = useState(false);
   const [prepItems, setPrepItems] = useState([
     { id: 1, text: 'Clothes Ready', completed: false, timesSaved: 10 },
     { id: 2, text: 'Lunch Ready', completed: false, timesSaved: 12 },
