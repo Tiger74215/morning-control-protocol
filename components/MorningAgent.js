@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Clock, Train, Sun, AlertTriangle, CheckCircle, Play, Pause, SkipForward, SkipBack, Volume2, Headphones, Bell, BellOff, Brain, Calendar, Navigation } from 'lucide-react';
+import { Mic, MicOff, Clock, Train, Sun, AlertTriangle, CheckCircle, Play, Pause, SkipForward, SkipBack, Volume2, Headphones, Bell, BellOff, Brain, Calendar, Navigation, Send, MessageSquare } from 'lucide-react';
 
 const MorningAgent = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -39,6 +39,8 @@ const MorningAgent = () => {
   ]);
   const [notifications, setNotifications] = useState([]);
   const [proactiveUpdates, setProactiveUpdates] = useState(true);
+  const [textInput, setTextInput] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
 
   // Background options
   const backgrounds = {
@@ -336,6 +338,66 @@ const MorningAgent = () => {
     };
     
     setNotifications(prev => [notification, ...prev.slice(0, 9)]); // Keep last 10
+  };
+
+  const handleTextCommand = (command) => {
+    // Add user input to chat history
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      text: command,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setChatHistory(prev => [userMessage, ...prev]);
+    
+    // Process the command
+    handleVoiceCommand(command.toLowerCase());
+    
+    // Add AI response to chat history
+    setTimeout(() => {
+      const aiResponse = {
+        id: Date.now() + 1,
+        type: 'ai',
+        text: getTextResponse(command.toLowerCase()),
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setChatHistory(prev => [aiResponse, ...prev]);
+    }, 500);
+    
+    // Clear input
+    setTextInput('');
+  };
+
+  const getTextResponse = (command) => {
+    if (command.includes('status') || command.includes('time')) {
+      if (scenario) {
+        return sayerResponses.status(scenario.timeLeft, scenario.status);
+      }
+      return "Status monitoring requires active morning protocol, Resident.";
+    } else if (command.includes('weather')) {
+      if (realWeatherData) {
+        return sayerResponses.weather(realWeatherData.temp, realWeatherData.condition, realWeatherData.recommendation);
+      } else {
+        return sayerResponses.weather(currentWeather.temp, currentWeather.condition, currentWeather.recommendation);
+      }
+    } else if (command.includes('train')) {
+      if (realTrainData) {
+        return sayerResponses.train(realTrainData.onTime, realTrainData.delay);
+      } else {
+        return sayerResponses.train(currentTrainStatus.onTime, currentTrainStatus.delay);
+      }
+    } else if (command.includes('autonomous on')) {
+      return sayerResponses.autonomousOn();
+    } else if (command.includes('autonomous off')) {
+      return sayerResponses.autonomousOff();
+    } else if (command.includes('schedule status')) {
+      const pending = daySchedule.filter(task => task.status === 'pending').length;
+      const completed = daySchedule.filter(task => task.status === 'completed').length;
+      return `Schedule analysis: ${completed} tasks completed, ${pending} tasks remaining. Your compliance rate is being... evaluated.`;
+    } else {
+      return sayerResponses.error;
+    }
   };
 
   // API Integration Functions
@@ -1236,6 +1298,58 @@ const MorningAgent = () => {
           
           <div className="mt-3 text-xs text-gray-300">
             Available commands: "Status report", "Atmospheric conditions", "Transport status", "Play music", "Play podcast", "Autonomous on/off", "Schedule status", "Play SAYER"
+          </div>
+        </div>
+
+        {/* Text Interface */}
+        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
+          <h3 className="font-semibold mb-3 flex items-center">
+            <MessageSquare className="w-5 h-5 mr-2" />
+            Text Interface Protocol
+          </h3>
+          
+          {/* Chat History */}
+          {chatHistory.length > 0 && (
+            <div className="mb-3 h-32 overflow-y-auto space-y-2">
+              {chatHistory.slice(0, 6).reverse().map((message) => (
+                <div key={message.id} className={`p-2 rounded text-sm ${
+                  message.type === 'user' 
+                    ? 'bg-blue-900 bg-opacity-50 ml-4' 
+                    : 'bg-gray-900 bg-opacity-50 mr-4'
+                }`}>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs text-gray-400">
+                      {message.type === 'user' ? 'RESIDENT' : 'MORNING CONTROL'}
+                    </span>
+                    <span className="text-xs text-gray-500">{message.timestamp}</span>
+                  </div>
+                  <div className="mt-1">{message.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Text Input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && textInput.trim() && handleTextCommand(textInput)}
+              placeholder="Enter command..."
+              className="flex-1 p-3 rounded bg-white bg-opacity-20 text-white placeholder-gray-400 text-sm"
+            />
+            <button
+              onClick={() => textInput.trim() && handleTextCommand(textInput)}
+              disabled={!textInput.trim()}
+              className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded transition-colors"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="mt-2 text-xs text-gray-300">
+            Type commands like: "status report", "weather", "autonomous on"
           </div>
         </div>
 
