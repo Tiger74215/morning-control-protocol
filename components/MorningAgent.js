@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Clock, Train, Sun, AlertTriangle, CheckCircle, Play, Pause, SkipForward, SkipBack, Volume2, Headphones, Bell, BellOff, Brain, Calendar, Navigation, Send, MessageSquare } from 'lucide-react';
+import { Mic, MicOff, Clock, Train, Sun, AlertTriangle, CheckCircle, Play, Pause, SkipForward, SkipBack, Volume2, Headphones, Bell, BellOff, Brain, Calendar, Navigation, Send, MessageSquare, MapPin, Route, Info } from 'lucide-react';
 
 const MorningAgent = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -41,6 +41,20 @@ const MorningAgent = () => {
   const [proactiveUpdates, setProactiveUpdates] = useState(true);
   const [textInput, setTextInput] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
+  const [septaRouteQuery, setSeptaRouteQuery] = useState({
+    from: '',
+    to: '',
+    time: '',
+    date: ''
+  });
+  const [septaRoutes, setSeptaRoutes] = useState([]);
+  const [septaSystemStatus, setSeptaSystemStatus] = useState(null);
+  const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationPermission, setLocationPermission] = useState('prompt');
+  const [nearestStation, setNearestStation] = useState(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   // Background options
   const backgrounds = {
@@ -394,7 +408,13 @@ const MorningAgent = () => {
     } else if (command.includes('schedule status')) {
       const pending = daySchedule.filter(task => task.status === 'pending').length;
       const completed = daySchedule.filter(task => task.status === 'completed').length;
-      return `Schedule analysis: ${completed} tasks completed, ${pending} tasks remaining. Your compliance rate is being... evaluated.`;
+      return `Schedule analysis: ${pending} tasks completed, ${completed} tasks remaining. Your compliance rate is being... evaluated.`;
+    } else if (command.includes('route') || command.includes('get to')) {
+      return "Route calculation requires destination specification. Use the transportation interface, Resident.";
+    } else if (command.includes('system status')) {
+      return septaSystemStatus ? 
+        `SEPTA system operating at ${septaSystemStatus.onTimePercentage}% efficiency. ${septaSystemStatus.delayedTrains} trains experiencing delays.` :
+        "System status data unavailable. Initiating diagnostic protocols.";
     } else {
       return sayerResponses.error;
     }
@@ -828,6 +848,55 @@ const MorningAgent = () => {
       speak(`Schedule analysis: ${completed} tasks completed, ${pending} tasks remaining. Your compliance rate is being... evaluated.`);
     } else if (command.includes('add task')) {
       speak("Task integration requires manual interface interaction. Use the schedule management panel, Resident.");
+    } else if (command.includes('route to') || command.includes('get to')) {
+      // Extract destination from voice command
+      const words = command.split(' ');
+      const toIndex = words.findIndex(word => word === 'to');
+      if (toIndex !== -1 && words[toIndex + 1]) {
+        const destination = words.slice(toIndex + 1).join(' ');
+        speak(`Calculating optimal route to ${destination} from current position. Processing transportation matrix.`);
+        findSeptaRouteFromLocation(destination, true);
+        setShowRouteModal(true);
+      } else {
+        speak("Destination parameters required. Specify target location, Resident.");
+      }
+    } else if (command.includes('where am i') || command.includes('current location')) {
+      speak("Acquiring GPS coordinates. Stand by for positional analysis.");
+      getCurrentLocation();
+    } else if (command.includes('nearest station')) {
+      if (nearestStation) {
+        speak(`Nearest station: ${nearestStation.name}, ${nearestStation.distance} meters from your position.`);
+      } else {
+        speak("Position data required. Initiating location acquisition.");
+        getCurrentLocation();
+      }
+    } else if (command.includes('navigate to')) {
+      const words = command.split(' ');
+      const toIndex = words.findIndex(word => word === 'to');
+      if (toIndex !== -1 && words[toIndex + 1]) {
+        const destination = words.slice(toIndex + 1).join(' ');
+        speak(`Opening navigation to ${destination}. Route optimization engaged.`);
+        openGoogleMapsDirections(destination);
+      }
+    } else if (command.includes('system status') || command.includes('septa status')) {
+      speak("Analyzing SEPTA network operations. Stand by for system assessment.");
+      fetchSeptaSystemStatus().then(status => {
+        setSeptaSystemStatus(status);
+        speak(`System analysis complete. ${status.onTimePercentage}% of trains operating within acceptable parameters. ${status.delayedTrains} trains experiencing temporal displacement.`);
+      });
+    } else if (command.includes('route from')) {
+      // Handle "route from X to Y" commands
+      const words = command.split(' ');
+      const fromIndex = words.findIndex(word => word === 'from');
+      const toIndex = words.findIndex(word => word === 'to');
+      
+      if (fromIndex !== -1 && toIndex !== -1 && words[fromIndex + 1] && words[toIndex + 1]) {
+        const origin = words.slice(fromIndex + 1, toIndex).join(' ');
+        const destination = words.slice(toIndex + 1).join(' ');
+        speak(`Processing route calculation from ${origin} to ${destination}.`);
+        findSeptaRoute(origin, destination);
+        setShowRouteModal(true);
+      }
     } else {
       speak(sayerResponses.error);
     }
@@ -1297,7 +1366,7 @@ const MorningAgent = () => {
           )}
           
           <div className="mt-3 text-xs text-gray-300">
-            Available commands: "Status report", "Atmospheric conditions", "Transport status", "Play music", "Play podcast", "Autonomous on/off", "Schedule status", "Play SAYER"
+            Available commands: "Where am I", "Route to [destination]", "Navigate to [location]", "Nearest station", "System status", "Current location"
           </div>
         </div>
 
