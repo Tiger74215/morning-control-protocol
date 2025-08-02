@@ -90,135 +90,144 @@ const MorningAgent = () => {
     nextTrain: '4:55 AM'
   };
 
-  // Media Control Functions
-  const mediaControls = {
-    play: () => {
-      try {
-        // For web-based players, try to find and control them
-        if (navigator.mediaSession) {
-          navigator.mediaSession.playbackState = 'playing';
-        }
-        
-        // Try to trigger play via Web API if available
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.active?.postMessage({action: 'play'});
-          });
-        }
-        
-        setMediaState(prev => ({
-          ...prev, 
-          isPlaying: true,
-          currentTrack: prev.currentTrack === 'No media selected' ? 'Unknown Track' : prev.currentTrack
-        }));
-        
-        speak(sayerResponses.mediaPlay(mediaState.currentTrack, mediaState.currentApp));
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    },
-    
-    pause: () => {
-      try {
-        if (navigator.mediaSession) {
-          navigator.mediaSession.playbackState = 'paused';
-        }
-        
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.active?.postMessage({action: 'pause'});
-          });
-        }
-        
-        setMediaState(prev => ({...prev, isPlaying: false}));
-        speak(sayerResponses.mediaPause());
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    },
-    
-    next: () => {
-      try {
-        if (navigator.mediaSession) {
-          navigator.mediaSession.setActionHandler('nexttrack', () => {});
-        }
-        
-        speak(sayerResponses.mediaNext());
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    },
-    
-    previous: () => {
-      try {
-        if (navigator.mediaSession) {
-          navigator.mediaSession.setActionHandler('previoustrack', () => {});
-        }
-        
-        speak(sayerResponses.mediaPrevious());
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    },
-    
-    setVolume: (level) => {
-      setMediaState(prev => ({...prev, volume: level}));
-      speak(sayerResponses.mediaVolume(level));
-    },
-    
-    openPodcastApp: () => {
-      try {
-        // Try to open common podcast apps
-        const podcastApps = [
-          'podcast://',  // Apple Podcasts
-          'pocketcasts://', // Pocket Casts
-          'spotify:show', // Spotify Podcasts
-          'overcast://' // Overcast
-        ];
-        
-        // Try each app protocol
-        podcastApps.forEach(protocol => {
-          try {
-            window.location.href = protocol;
-          } catch (e) {
-            // Continue to next app
-          }
-        });
-        
-        setMediaState(prev => ({...prev, currentApp: 'Podcast App'}));
-        speak(sayerResponses.podcastStart());
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    },
-    
-    openMusicApp: () => {
-      try {
-        // Try to open music apps
-        const musicApps = [
-          'music://', // Apple Music
-          'spotify:', // Spotify
-          'https://music.youtube.com', // YouTube Music
-          'https://music.amazon.com' // Amazon Music
-        ];
-        
-        musicApps.forEach(app => {
-          try {
-            window.open(app, '_blank');
-          } catch (e) {
-            // Continue to next app
-          }
-        });
-        
-        setMediaState(prev => ({...prev, currentApp: 'Music App'}));
-        speak(sayerResponses.musicStart());
-      } catch (error) {
-        speak(sayerResponses.mediaError());
-      }
-    }
-  };
+  // Use real data if available, otherwise fall back to mock data
   const currentWeather = realWeatherData || mockWeather;
   const currentTrainStatus = realTrainData || mockTrainStatus;
+
+  // SEPTA Stations Database with GPS coordinates
+  const septaStations = [
+    { name: 'Temple University', lat: 39.9815, lng: -75.1505 },
+    { name: '30th Street Station', lat: 39.9566, lng: -75.1815 },
+    { name: 'Suburban Station', lat: 39.9544, lng: -75.1681 },
+    { name: 'Jefferson Station', lat: 39.9526, lng: -75.1580 },
+    { name: 'Jenkintown-Wyncote', lat: 40.0951, lng: -75.1279 },
+    { name: 'Glenside', lat: 40.1034, lng: -75.1540 },
+    { name: 'Wayne Junction', lat: 40.0439, lng: -75.1378 },
+    { name: 'North Philadelphia', lat: 39.9967, lng: -75.1548 },
+    { name: 'Fern Rock Transportation Center', lat: 40.0419, lng: -75.1296 },
+    { name: 'Melrose Park', lat: 40.0626, lng: -75.1215 },
+    { name: 'Elkins Park', lat: 40.0715, lng: -75.1296 },
+    { name: 'Cheltenham', lat: 40.0598, lng: -75.1432 },
+    { name: 'Wayne', lat: 40.0443, lng: -75.3871 },
+    { name: 'Ardmore', lat: 40.0065, lng: -75.2893 },
+    { name: 'Villanova', lat: 40.0387, lng: -75.3421 },
+    { name: 'Radnor', lat: 40.0465, lng: -75.3615 },
+    { name: 'Paoli', lat: 40.0426, lng: -75.4854 },
+    { name: 'Lansdale', lat: 40.2415, lng: -75.2835 },
+    { name: 'Doylestown', lat: 40.3101, lng: -75.1296 },
+    { name: 'Warminster', lat: 40.2015, lng: -75.0879 },
+    { name: 'West Trenton', lat: 40.2676, lng: -74.8343 },
+    { name: 'Airport Terminal A', lat: 39.8719, lng: -75.2411 },
+    { name: 'Airport Terminal B', lat: 39.8742, lng: -75.2458 }
+  ];
+
+  // Location Services
+  const getCurrentLocation = async () => {
+    setIsGettingLocation(true);
+    
+    if (!navigator.geolocation) {
+      speak("Location services not available on this device, Resident.");
+      setIsGettingLocation(false);
+      return null;
+    }
+
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        });
+      });
+
+      const location = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        timestamp: new Date()
+      };
+
+      setCurrentLocation(location);
+      setLocationPermission('granted');
+      
+      // Find nearest SEPTA station
+      const nearest = findNearestStation(location.lat, location.lng);
+      setNearestStation(nearest);
+      
+      speak(`Location acquired. Nearest station: ${nearest.name}, approximately ${nearest.distance} meters away.`);
+      
+      return location;
+      
+    } catch (error) {
+      console.error('Location error:', error);
+      setLocationPermission('denied');
+      
+      if (error.code === 1) {
+        speak("Location access denied. Manual station selection required, Resident.");
+      } else if (error.code === 2) {
+        speak("Location unavailable. GPS signal insufficient.");
+      } else {
+        speak("Location services timeout. Manual navigation recommended.");
+      }
+      
+      return null;
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
+
+  // Calculate distance between two points (Haversine formula)
+  const calculateDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Find nearest SEPTA station
+  const findNearestStation = (lat, lng) => {
+    let nearest = null;
+    let minDistance = Infinity;
+
+    septaStations.forEach(station => {
+      const distance = calculateDistance(lat, lng, station.lat, station.lng);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = { ...station, distance: Math.round(distance) };
+      }
+    });
+
+    return nearest;
+  };
+
+  // Google Maps integration
+  const openGoogleMapsDirections = (destination, mode = 'walking') => {
+    if (!destination) return;
+    
+    let url = 'https://www.google.com/maps/dir/';
+    
+    if (currentLocation) {
+      url += `${currentLocation.lat},${currentLocation.lng}/`;
+    }
+    
+    // Find destination coordinates
+    const destStation = septaStations.find(s => s.name === destination);
+    if (destStation) {
+      url += `${destStation.lat},${destStation.lng}`;
+    } else {
+      url += encodeURIComponent(destination);
+    }
+    
+    url += `/@${currentLocation?.lat || 39.9526},${currentLocation?.lng || -75.1652},15z`;
+    url += `/data=!3m1!4b1!4m2!4m1!3e${mode === 'walking' ? '2' : '3'}`;
+    
+    window.open(url, '_blank');
+    speak(`Opening navigation to ${destination}. Transit optimization in progress.`);
+  };
 
   // Update time every second
   useEffect(() => {
@@ -232,426 +241,6 @@ const MorningAgent = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [autonomousMode, currentTime]);
-
-  // Autonomous AI Manager - runs every minute
-  const autonomousManager = () => {
-    const now = new Date();
-    const currentTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    
-    // Check scheduled tasks
-    daySchedule.forEach(task => {
-      if (task.time === currentTimeStr && task.status === 'pending') {
-        executeScheduledTask(task);
-      }
-    });
-    
-    // Proactive monitoring
-    if (proactiveUpdates) {
-      proactiveMonitoring();
-    }
-  };
-
-  const executeScheduledTask = (task) => {
-    setDaySchedule(prev => 
-      prev.map(t => t.id === task.id ? { ...t, status: 'active' } : t)
-    );
-    
-    const taskResponses = {
-      'Wake up call': () => {
-        speak("Good morning, Resident. MORNING CONTROL PROTOCOL is now active. Your schedule adherence begins... now.");
-        addNotification('Morning protocol activated', 'high');
-      },
-      'Weather & train check': () => {
-        fetchRealData();
-        speak("Initiating atmospheric and transport status verification. Stand by for optimization parameters.");
-      },
-      'Bathroom routine reminder': () => {
-        speak("Resident, hygiene protocol should commence. Time allocation: 20 minutes. Efficiency is... expected.");
-        addNotification('Bathroom routine - 20 min allocated', 'medium');
-      },
-      'Getting dressed checkpoint': () => {
-        const clothesReady = prepItems.find(item => item.text === 'Clothes Ready')?.completed;
-        if (clothesReady) {
-          speak("Clothing preparation verified as complete. Proceed with dressing protocol. Estimated time: 2 minutes.");
-        } else {
-          speak("WARNING: Clothing preparation incomplete. Emergency selection protocol required. Time penalty: 10 minutes.");
-          addNotification('Clothes not prepped - 10 min penalty!', 'high');
-        }
-      },
-      'Final departure warning': () => {
-        speak("FINAL DEPARTURE WARNING. Resident must leave premises in 20 minutes. Gather required items. Delay is... inadvisable.");
-        addNotification('20 minutes to departure', 'critical');
-      },
-      'Leave house NOW': () => {
-        speak("DEPARTURE TIME REACHED. Exit premises immediately. Transport synchronization is... critical.");
-        addNotification('LEAVE NOW', 'critical');
-      },
-      'Arrival confirmation': () => {
-        speak("Expected arrival time reached. Confirm work location entry. Schedule compliance verification required.");
-        addNotification('Confirm arrival at work', 'medium');
-      },
-      'Evening prep reminder': () => {
-        speak("Evening preparation protocol recommended. Tomorrow's efficiency depends on tonight's... foresight.");
-        addNotification('Prep for tomorrow', 'low');
-      }
-    };
-    
-    const taskFunction = taskResponses[task.task];
-    if (taskFunction) {
-      taskFunction();
-    }
-    
-    // Mark task as completed after 1 minute
-    setTimeout(() => {
-      setDaySchedule(prev => 
-        prev.map(t => t.id === task.id ? { ...t, status: 'completed' } : t)
-      );
-    }, 60000);
-  };
-
-  const proactiveMonitoring = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    
-    // Check for potential issues
-    if (hours === 3 && minutes >= 0 && minutes <= 5) {
-      // Early morning checks
-      if (!realWeatherData) {
-        fetchRealData();
-      }
-    }
-    
-    if (hours === 3 && minutes >= 45) {
-      // Pre-departure checks
-      const scenario = calculateMorningScenario();
-      if (scenario && scenario.status === 'emergency') {
-        addNotification('EMERGENCY: Consider Wayne Junction!', 'critical');
-        speak("EMERGENCY PROTOCOL: Current trajectory indicates schedule failure. Wayne Junction alternative route recommended.");
-      }
-    }
-    
-    // Check for train delays every 10 minutes during commute window
-    if (hours >= 3 && hours <= 5 && minutes % 10 === 0) {
-      fetchRealTrainData().then(trainData => {
-        if (trainData.delay > 5) {
-          addNotification(`Train delayed ${trainData.delay} min`, 'high');
-          speak(`TRANSPORT ADVISORY: Your scheduled transport experiences ${trainData.delay} minute temporal displacement. Adjust departure accordingly.`);
-        }
-      });
-    }
-  };
-
-  const addNotification = (message, priority) => {
-    const notification = {
-      id: Date.now(),
-      message,
-      priority,
-      timestamp: new Date().toLocaleTimeString(),
-      read: false
-    };
-    
-    setNotifications(prev => [notification, ...prev.slice(0, 9)]); // Keep last 10
-  };
-
-  const handleTextCommand = (command) => {
-    // Add user input to chat history
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      text: command,
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    setChatHistory(prev => [userMessage, ...prev]);
-    
-    // Process the command
-    handleVoiceCommand(command.toLowerCase());
-    
-    // Add AI response to chat history
-    setTimeout(() => {
-      const aiResponse = {
-        id: Date.now() + 1,
-        type: 'ai',
-        text: getTextResponse(command.toLowerCase()),
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setChatHistory(prev => [aiResponse, ...prev]);
-    }, 500);
-    
-    // Clear input
-    setTextInput('');
-  };
-
-  const getTextResponse = (command) => {
-    if (command.includes('status') || command.includes('time')) {
-      if (scenario) {
-        return sayerResponses.status(scenario.timeLeft, scenario.status);
-      }
-      return "Status monitoring requires active morning protocol, Resident.";
-    } else if (command.includes('weather')) {
-      if (realWeatherData) {
-        return sayerResponses.weather(realWeatherData.temp, realWeatherData.condition, realWeatherData.recommendation);
-      } else {
-        return sayerResponses.weather(currentWeather.temp, currentWeather.condition, currentWeather.recommendation);
-      }
-    } else if (command.includes('train')) {
-      if (realTrainData) {
-        return sayerResponses.train(realTrainData.onTime, realTrainData.delay);
-      } else {
-        return sayerResponses.train(currentTrainStatus.onTime, currentTrainStatus.delay);
-      }
-    } else if (command.includes('autonomous on')) {
-      return sayerResponses.autonomousOn();
-    } else if (command.includes('autonomous off')) {
-      return sayerResponses.autonomousOff();
-    } else if (command.includes('schedule status')) {
-      const pending = daySchedule.filter(task => task.status === 'pending').length;
-      const completed = daySchedule.filter(task => task.status === 'completed').length;
-      return `Schedule analysis: ${pending} tasks completed, ${completed} tasks remaining. Your compliance rate is being... evaluated.`;
-    } else if (command.includes('route') || command.includes('get to')) {
-      return "Route calculation requires destination specification. Use the transportation interface, Resident.";
-    } else if (command.includes('system status')) {
-      return septaSystemStatus ? 
-        `SEPTA system operating at ${septaSystemStatus.onTimePercentage}% efficiency. ${septaSystemStatus.delayedTrains} trains experiencing delays.` :
-        "System status data unavailable. Initiating diagnostic protocols.";
-    } else {
-      return sayerResponses.error;
-    }
-  };
-
-  // API Integration Functions
-  const fetchRealWeatherData = async () => {
-    try {
-      const latitude = 40.1;
-      const longitude = -75.15;
-      
-      const response = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=America/New_York&forecast_days=1`
-      );
-      
-      const data = await response.json();
-      const current = data.current;
-      
-      const temp = Math.round(current.temperature_2m * 9/5 + 32);
-      const feelsLike = Math.round(current.apparent_temperature * 9/5 + 32);
-      const windSpeed = Math.round(current.wind_speed_10m * 0.621371);
-      
-      const getWeatherCondition = (code) => {
-        if (code === 0) return 'clear';
-        if (code <= 3) return 'partly cloudy';
-        if (code <= 48) return 'foggy';
-        if (code <= 67) return 'rainy';
-        if (code <= 77) return 'snowy';
-        if (code <= 82) return 'showers';
-        if (code <= 99) return 'thunderstorms';
-        return 'cloudy';
-      };
-      
-      const condition = getWeatherCondition(current.weather_code);
-      
-      const getClothingRecommendation = (temp, feelsLike, precipitation) => {
-        let recommendation = '';
-        
-        if (feelsLike < 32) {
-          recommendation = "Heavy winter coat, gloves, hat, warm layers";
-        } else if (feelsLike < 45) {
-          recommendation = "Winter jacket or heavy coat";
-        } else if (feelsLike < 60) {
-          recommendation = "Light jacket or sweater";
-        } else if (feelsLike < 75) {
-          recommendation = "Long sleeves or light layer";
-        } else {
-          recommendation = "T-shirt or light clothing";
-        }
-        
-        if (precipitation > 0 || condition.includes('rain') || condition.includes('shower')) {
-          recommendation += " + Umbrella or rain jacket";
-        }
-        
-        return recommendation;
-      };
-      
-      return {
-        temp,
-        feelsLike,
-        condition,
-        recommendation: getClothingRecommendation(temp, feelsLike, current.precipitation),
-        windSpeed,
-        humidity: current.relative_humidity_2m,
-        lastUpdated: new Date().toLocaleTimeString()
-      };
-      
-    } catch (error) {
-      console.error('Weather API error:', error);
-      return {
-        temp: 35,
-        feelsLike: 28,
-        condition: 'cloudy',
-        recommendation: 'Winter jacket recommended',
-        windSpeed: 8,
-        humidity: 65,
-        lastUpdated: 'API Error - Using mock data'
-      };
-    }
-  };
-
-  const fetchRealTrainData = async () => {
-    try {
-      const response = await fetch('https://www3.septa.org/api/TransitViewAll/index.php');
-      const data = await response.json();
-      
-      const relevantLines = ['Lansdale/Doylestown', 'Warminster', 'West Trenton'];
-      const morningTrains = data.filter(train => {
-        const trainTime = parseInt(train.trainno);
-        return relevantLines.includes(train.line) && 
-               (train.dest === 'Center City Philadelphia' || 
-                train.dest === 'Temple' || 
-                train.dest === '30th Street Station') &&
-               trainTime >= 400 && trainTime <= 500;
-      });
-      
-      const your425Train = morningTrains.find(train => 
-        train.trainno === '425' || 
-        (train.currentstop === 'Jenkintown-Wyncote' || train.nextstop === 'Jenkintown-Wyncote')
-      );
-      
-      if (your425Train) {
-        return {
-          onTime: your425Train.late <= 2,
-          delay: your425Train.late || 0,
-          currentLocation: your425Train.currentstop,
-          nextStop: your425Train.nextstop,
-          lastUpdated: new Date().toLocaleTimeString()
-        };
-      }
-      
-      return {
-        onTime: morningTrains.length > 0 && morningTrains[0].late <= 2,
-        delay: morningTrains.length > 0 ? morningTrains[0].late : 0,
-        currentLocation: 'Unknown',
-        nextStop: 'Jenkintown-Wyncote',
-        lastUpdated: new Date().toLocaleTimeString()
-      };
-      
-    } catch (error) {
-      console.error('SEPTA API error:', error);
-      return {
-        onTime: true,
-        delay: 0,
-        currentLocation: 'On Schedule',
-        nextStop: 'Jenkintown-Wyncote',
-        lastUpdated: 'API Error - Using mock data'
-      };
-    }
-  };
-
-  const fetchRealData = async () => {
-    setDataLoading(true);
-    try {
-      const [weatherData, trainData] = await Promise.all([
-        fetchRealWeatherData(),
-        fetchRealTrainData()
-      ]);
-      
-      setRealWeatherData(weatherData);
-      setRealTrainData(trainData);
-      
-      speak(`Weather update: Current atmospheric conditions analyzed. Temperature: ${weatherData.temp} degrees. Condition: ${weatherData.condition}. Transport status: Your 4:25 AM departure remains ${trainData.onTime ? 'temporally compliant' : `${trainData.delay} minutes displaced`}. MORNING CONTROL has updated all parameters.`);
-      
-    } catch (error) {
-      console.error('Error fetching real data:', error);
-    } finally {
-      setDataLoading(false);
-    }
-  };
-
-  // Calculate morning scenario based on current time
-  const calculateMorningScenario = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    const currentMinutes = hours * 60 + minutes;
-    
-    const idealWakeUp = 3 * 60;
-    const latestWakeUp = 3 * 60 + 15;
-    const leaveTime = 4 * 60 + 10;
-    const trainTime = 4 * 60 + 25;
-    
-    const bathroomTime = 20;
-    const clothingTime = prepItems.find(item => item.text === 'Clothes Ready')?.completed ? 2 : 12;
-    const lunchTime = prepItems.find(item => item.text === 'Lunch Ready')?.completed ? 2 : 12;
-    const travelTime = 7;
-    
-    const totalRoutineTime = bathroomTime + clothingTime + lunchTime + travelTime;
-    
-    if (currentMinutes >= idealWakeUp && currentMinutes < trainTime) {
-      const availableTime = leaveTime - currentMinutes;
-      const scenario = {
-        timeLeft: availableTime,
-        canCatchTrain: availableTime >= (totalRoutineTime - travelTime),
-        status: availableTime >= (totalRoutineTime - travelTime) ? 'good' : 
-                availableTime >= (totalRoutineTime - travelTime - 10) ? 'rushed' : 'emergency',
-        routineTime: totalRoutineTime - travelTime,
-        leaveBy: useMilitaryTime ? 
-          `${Math.floor(leaveTime / 60).toString().padStart(2, '0')}:${String(leaveTime % 60).padStart(2, '0')}` :
-          `${Math.floor(leaveTime / 60)}:${String(leaveTime % 60).padStart(2, '0')}`,
-        trainTime: useMilitaryTime ?
-          `${Math.floor(trainTime / 60).toString().padStart(2, '0')}:${String(trainTime % 60).padStart(2, '0')}` :
-          `${Math.floor(trainTime / 60)}:${String(trainTime % 60).padStart(2, '0')}`
-      };
-      return scenario;
-    }
-    
-    return null;
-  };
-
-  const scenario = calculateMorningScenario();
-
-  const togglePrepItem = (id) => {
-    setPrepItems(items => 
-      items.map(item => 
-        item.id === id ? { ...item, completed: !item.completed } : item
-      )
-    );
-  };
-
-  const addPrepItem = () => {
-    if (newItemText.trim()) {
-      const newItem = {
-        id: Date.now(),
-        text: newItemText.trim(),
-        completed: false,
-        timesSaved: 5
-      };
-      setPrepItems(items => [...items, newItem]);
-      setNewItemText('');
-      setIsAddingItem(false);
-      speak(`Preparation item "${newItemText}" has been integrated into your optimization protocol. MORNING CONTROL acknowledges your... initiative.`);
-    }
-  };
-
-  const removePrepItem = (id) => {
-    setPrepItems(items => items.filter(item => item.id !== id));
-  };
-
-  const updateItemTimeSaved = (id, newTime) => {
-    setPrepItems(items =>
-      items.map(item =>
-        item.id === id ? { ...item, timesSaved: newTime } : item
-      )
-    );
-  };
-
-  const speak = (text) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.7; // Slower, more deliberate
-      utterance.pitch = 0.8; // Slightly lower pitch
-      utterance.volume = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
 
   // SAYER-style responses
   const sayerResponses = {
@@ -693,46 +282,103 @@ const MorningAgent = () => {
     
     departure: "Departure time approaches, Resident. Gather your required items. The transport schedule is... unforgiving.",
     
-    emergency: "EMERGENCY PROTOCOL ACTIVATED. Resident, your current trajectory will result in schedule deviation. Alternative routes are being calculated. Do not panic. Panic is... inefficient.",
-    
-    // Media control responses
-    mediaPlay: (track, app) => 
-      `Audio protocol initiated. Now playing: ${track} via ${app}. Your auditory experience has been... optimized.`,
-    
-    mediaPause: () => 
-      "Audio protocol suspended. Silence is... productive.",
-    
-    mediaNext: () => 
-      "Advancing to next audio selection. Your entertainment preferences are being... monitored.",
-    
-    mediaPrevious: () => 
-      "Returning to previous audio selection. Repetition can be... soothing.",
-    
-    mediaVolume: (level) => 
-      `Audio output adjusted to ${level} percent. Your hearing preservation is... considered.`,
-    
-    podcastStart: () => 
-      "Initiating podcast protocol. SAYER episodes are... recommended for optimal morning conditioning.",
-    
-    musicStart: () => 
-      "Initiating music protocol. Algorithmic selection of optimal morning audio commencing.",
-    
-    mediaError: () => 
-      "Media interface experiencing... difficulties. Manual intervention may be required, Resident.",
-    
-    // Autonomous responses
-    autonomousOn: () =>
-      "AUTONOMOUS MODE ACTIVATED. MORNING CONTROL will now monitor and optimize your schedule without manual intervention. Resistance is... futile.",
-    
-    autonomousOff: () =>
-      "Autonomous monitoring suspended. Manual control restored. Your independence is... noted.",
-    
-    scheduleUpdate: (task) =>
-      `Schedule modification detected. Task "${task}" has been integrated into your optimization protocol.`,
-    
-    proactiveAlert: (issue) =>
-      `PROACTIVE ALERT: ${issue}. Corrective action is... recommended.`
+    emergency: "EMERGENCY PROTOCOL ACTIVATED. Resident, your current trajectory will result in schedule deviation. Alternative routes are being calculated. Do not panic. Panic is... inefficient."
   };
+
+  const speak = (text) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.7; // Slower, more deliberate
+      utterance.pitch = 0.8; // Slightly lower pitch
+      utterance.volume = 0.9;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const handleVoiceCommand = (command) => {
+    if (command.includes('status') || command.includes('time')) {
+      const scenario = calculateMorningScenario();
+      if (scenario) {
+        speak(sayerResponses.status(scenario.timeLeft, scenario.status));
+      }
+    } else if (command.includes('weather')) {
+      if (realWeatherData) {
+        speak(sayerResponses.weather(realWeatherData.temp, realWeatherData.condition, realWeatherData.recommendation));
+      } else {
+        speak(sayerResponses.weather(currentWeather.temp, currentWeather.condition, currentWeather.recommendation));
+      }
+    } else if (command.includes('where am i') || command.includes('current location')) {
+      speak("Acquiring GPS coordinates. Stand by for positional analysis.");
+      getCurrentLocation();
+    } else if (command.includes('nearest station')) {
+      if (nearestStation) {
+        speak(`Nearest station: ${nearestStation.name}, ${nearestStation.distance} meters from your position.`);
+      } else {
+        speak("Position data required. Initiating location acquisition.");
+        getCurrentLocation();
+      }
+    } else if (command.includes('route to') || command.includes('get to')) {
+      const words = command.split(' ');
+      const toIndex = words.findIndex(word => word === 'to');
+      if (toIndex !== -1 && words[toIndex + 1]) {
+        const destination = words.slice(toIndex + 1).join(' ');
+        speak(`Calculating optimal route to ${destination} from current position. Processing transportation matrix.`);
+      } else {
+        speak("Destination parameters required. Specify target location, Resident.");
+      }
+    } else if (command.includes('navigate to')) {
+      const words = command.split(' ');
+      const toIndex = words.findIndex(word => word === 'to');
+      if (toIndex !== -1 && words[toIndex + 1]) {
+        const destination = words.slice(toIndex + 1).join(' ');
+        speak(`Opening navigation to ${destination}. Route optimization engaged.`);
+        openGoogleMapsDirections(destination);
+      }
+    } else {
+      speak(sayerResponses.error);
+    }
+  };
+
+  const calculateMorningScenario = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentMinutes = hours * 60 + minutes;
+    
+    const idealWakeUp = 3 * 60;
+    const latestWakeUp = 3 * 60 + 15;
+    const leaveTime = 4 * 60 + 10;
+    const trainTime = 4 * 60 + 25;
+    
+    const bathroomTime = 20;
+    const clothingTime = prepItems.find(item => item.text === 'Clothes Ready')?.completed ? 2 : 12;
+    const lunchTime = prepItems.find(item => item.text === 'Lunch Ready')?.completed ? 2 : 12;
+    const travelTime = 7;
+    
+    const totalRoutineTime = bathroomTime + clothingTime + lunchTime + travelTime;
+    
+    if (currentMinutes >= idealWakeUp && currentMinutes < trainTime) {
+      const availableTime = leaveTime - currentMinutes;
+      const scenario = {
+        timeLeft: availableTime,
+        canCatchTrain: availableTime >= (totalRoutineTime - travelTime),
+        status: availableTime >= (totalRoutineTime - travelTime) ? 'good' : 
+                availableTime >= (totalRoutineTime - travelTime - 10) ? 'rushed' : 'emergency',
+        routineTime: totalRoutineTime - travelTime,
+        leaveBy: useMilitaryTime ? 
+          `${Math.floor(leaveTime / 60).toString().padStart(2, '0')}:${String(leaveTime % 60).padStart(2, '0')}` :
+          `${Math.floor(leaveTime / 60)}:${String(leaveTime % 60).padStart(2, '0')}`,
+        trainTime: useMilitaryTime ?
+          `${Math.floor(trainTime / 60).toString().padStart(2, '0')}:${String(trainTime % 60).padStart(2, '0')}` :
+          `${Math.floor(trainTime / 60)}:${String(trainTime % 60).padStart(2, '0')}`
+      };
+      return scenario;
+    }
+    
+    return null;
+  };
+
+  const scenario = calculateMorningScenario();
 
   const startListening = () => {
     if ('webkitSpeechRecognition' in window) {
@@ -763,142 +409,6 @@ const MorningAgent = () => {
       recognition.start();
     } else {
       alert('Speech recognition not supported in this browser');
-    }
-  };
-
-  const handleVoiceCommand = (command) => {
-    if (command.includes('status') || command.includes('time')) {
-      if (scenario) {
-        speak(sayerResponses.status(scenario.timeLeft, scenario.status));
-      }
-    } else if (command.includes('weather')) {
-      if (realWeatherData) {
-        speak(sayerResponses.weather(realWeatherData.temp, realWeatherData.condition, realWeatherData.recommendation));
-      } else {
-        speak(sayerResponses.weather(currentWeather.temp, currentWeather.condition, currentWeather.recommendation));
-      }
-    } else if (command.includes('train')) {
-      if (realTrainData) {
-        speak(sayerResponses.train(realTrainData.onTime, realTrainData.delay));
-      } else {
-        speak(sayerResponses.train(currentTrainStatus.onTime, currentTrainStatus.delay));
-      }
-    } else if (command.includes('refresh') || command.includes('update data')) {
-      speak(sayerResponses.dataRefresh);
-      fetchRealData();
-    } else if (command.includes('clothes ready') || command.includes('outfit ready')) {
-      const clothesItem = prepItems.find(item => item.text === 'Clothes Ready');
-      if (clothesItem) {
-        togglePrepItem(clothesItem.id);
-        speak(clothesItem.completed ? sayerResponses.prepIncomplete('Clothes Ready') : sayerResponses.prepComplete('Clothes Ready'));
-      }
-    } else if (command.includes('lunch ready')) {
-      const lunchItem = prepItems.find(item => item.text === 'Lunch Ready');
-      if (lunchItem) {
-        togglePrepItem(lunchItem.id);
-        speak(lunchItem.completed ? sayerResponses.prepIncomplete('Lunch Ready') : sayerResponses.prepComplete('Lunch Ready'));
-      }
-    } else if (command.includes('wake up') || command.includes('i\'m up')) {
-      setWakeUpTime(new Date());
-      setMorningPhase('awake');
-      speak(sayerResponses.greeting);
-    } else if (command.includes('background') || command.includes('theme')) {
-      speak('Background modification options include: Dark Blue, Sunrise, Forest, Ocean, Simple Dark, Warm, and Cool. State your preference for environmental adjustment.');
-    } else if (command.includes('change background')) {
-      const bgCommand = command.toLowerCase();
-      Object.keys(backgroundNames).forEach(key => {
-        if (bgCommand.includes(backgroundNames[key].toLowerCase())) {
-          setSelectedBackground(key);
-          speak(sayerResponses.background(backgroundNames[key]));
-        }
-      });
-    } else if (command.includes('military time') || command.includes('24 hour')) {
-      setUseMilitaryTime(!useMilitaryTime);
-      speak(sayerResponses.timeFormat(!useMilitaryTime));
-    } else if (command.includes('play music') || command.includes('start music')) {
-      mediaControls.openMusicApp();
-    } else if (command.includes('play podcast') || command.includes('start podcast')) {
-      mediaControls.openPodcastApp();
-    } else if (command.includes('play') && !command.includes('music') && !command.includes('podcast')) {
-      mediaControls.play();
-    } else if (command.includes('pause') || command.includes('stop')) {
-      mediaControls.pause();
-    } else if (command.includes('next track') || command.includes('skip')) {
-      mediaControls.next();
-    } else if (command.includes('previous') || command.includes('back')) {
-      mediaControls.previous();
-    } else if (command.includes('volume up')) {
-      const newVolume = Math.min(100, mediaState.volume + 10);
-      mediaControls.setVolume(newVolume);
-    } else if (command.includes('volume down')) {
-      const newVolume = Math.max(0, mediaState.volume - 10);
-      mediaControls.setVolume(newVolume);
-    } else if (command.includes('play sayer')) {
-      speak("Excellent choice, Resident. SAYER podcast episodes provide optimal morning conditioning. Initiating audio protocol.");
-      mediaControls.openPodcastApp();
-    } else if (command.includes('autonomous on') || command.includes('activate autonomous')) {
-      setAutonomousMode(true);
-      speak(sayerResponses.autonomousOn());
-    } else if (command.includes('autonomous off') || command.includes('disable autonomous')) {
-      setAutonomousMode(false);
-      speak(sayerResponses.autonomousOff());
-    } else if (command.includes('schedule status') || command.includes('day schedule')) {
-      const pending = daySchedule.filter(task => task.status === 'pending').length;
-      const completed = daySchedule.filter(task => task.status === 'completed').length;
-      speak(`Schedule analysis: ${completed} tasks completed, ${pending} tasks remaining. Your compliance rate is being... evaluated.`);
-    } else if (command.includes('add task')) {
-      speak("Task integration requires manual interface interaction. Use the schedule management panel, Resident.");
-    } else if (command.includes('route to') || command.includes('get to')) {
-      // Extract destination from voice command
-      const words = command.split(' ');
-      const toIndex = words.findIndex(word => word === 'to');
-      if (toIndex !== -1 && words[toIndex + 1]) {
-        const destination = words.slice(toIndex + 1).join(' ');
-        speak(`Calculating optimal route to ${destination} from current position. Processing transportation matrix.`);
-        findSeptaRouteFromLocation(destination, true);
-        setShowRouteModal(true);
-      } else {
-        speak("Destination parameters required. Specify target location, Resident.");
-      }
-    } else if (command.includes('where am i') || command.includes('current location')) {
-      speak("Acquiring GPS coordinates. Stand by for positional analysis.");
-      getCurrentLocation();
-    } else if (command.includes('nearest station')) {
-      if (nearestStation) {
-        speak(`Nearest station: ${nearestStation.name}, ${nearestStation.distance} meters from your position.`);
-      } else {
-        speak("Position data required. Initiating location acquisition.");
-        getCurrentLocation();
-      }
-    } else if (command.includes('navigate to')) {
-      const words = command.split(' ');
-      const toIndex = words.findIndex(word => word === 'to');
-      if (toIndex !== -1 && words[toIndex + 1]) {
-        const destination = words.slice(toIndex + 1).join(' ');
-        speak(`Opening navigation to ${destination}. Route optimization engaged.`);
-        openGoogleMapsDirections(destination);
-      }
-    } else if (command.includes('system status') || command.includes('septa status')) {
-      speak("Analyzing SEPTA network operations. Stand by for system assessment.");
-      fetchSeptaSystemStatus().then(status => {
-        setSeptaSystemStatus(status);
-        speak(`System analysis complete. ${status.onTimePercentage}% of trains operating within acceptable parameters. ${status.delayedTrains} trains experiencing temporal displacement.`);
-      });
-    } else if (command.includes('route from')) {
-      // Handle "route from X to Y" commands
-      const words = command.split(' ');
-      const fromIndex = words.findIndex(word => word === 'from');
-      const toIndex = words.findIndex(word => word === 'to');
-      
-      if (fromIndex !== -1 && toIndex !== -1 && words[fromIndex + 1] && words[toIndex + 1]) {
-        const origin = words.slice(fromIndex + 1, toIndex).join(' ');
-        const destination = words.slice(toIndex + 1).join(' ');
-        speak(`Processing route calculation from ${origin} to ${destination}.`);
-        findSeptaRoute(origin, destination);
-        setShowRouteModal(true);
-      }
-    } else {
-      speak(sayerResponses.error);
     }
   };
 
@@ -935,6 +445,151 @@ const MorningAgent = () => {
     return timeString;
   };
 
+  const autonomousManager = () => {
+    const now = new Date();
+    const currentTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    daySchedule.forEach(task => {
+      if (task.time === currentTimeStr && task.status === 'pending') {
+        executeScheduledTask(task);
+      }
+    });
+    
+    if (proactiveUpdates) {
+      proactiveMonitoring();
+    }
+  };
+
+  const executeScheduledTask = (task) => {
+    setDaySchedule(prev => 
+      prev.map(t => t.id === task.id ? { ...t, status: 'active' } : t)
+    );
+    
+    const taskResponses = {
+      'Wake up call': () => {
+        speak("Good morning, Resident. MORNING CONTROL PROTOCOL is now active. Your schedule adherence begins... now.");
+        addNotification('Morning protocol activated', 'high');
+      },
+      'Weather & train check': () => {
+        speak("Initiating atmospheric and transport status verification. Stand by for optimization parameters.");
+      },
+      'Bathroom routine reminder': () => {
+        speak("Resident, hygiene protocol should commence. Time allocation: 20 minutes. Efficiency is... expected.");
+        addNotification('Bathroom routine - 20 min allocated', 'medium');
+      },
+      'Getting dressed checkpoint': () => {
+        const clothesReady = prepItems.find(item => item.text === 'Clothes Ready')?.completed;
+        if (clothesReady) {
+          speak("Clothing preparation verified as complete. Proceed with dressing protocol. Estimated time: 2 minutes.");
+        } else {
+          speak("WARNING: Clothing preparation incomplete. Emergency selection protocol required. Time penalty: 10 minutes.");
+          addNotification('Clothes not prepped - 10 min penalty!', 'high');
+        }
+      },
+      'Final departure warning': () => {
+        speak("FINAL DEPARTURE WARNING. Resident must leave premises in 20 minutes. Gather required items. Delay is... inadvisable.");
+        addNotification('20 minutes to departure', 'critical');
+      },
+      'Leave house NOW': () => {
+        speak("DEPARTURE TIME REACHED. Exit premises immediately. Transport synchronization is... critical.");
+        addNotification('LEAVE NOW', 'critical');
+      },
+      'Arrival confirmation': () => {
+        speak("Expected arrival time reached. Confirm work location entry. Schedule compliance verification required.");
+        addNotification('Confirm arrival at work', 'medium');
+      },
+      'Evening prep reminder': () => {
+        speak("Evening preparation protocol recommended. Tomorrow's efficiency depends on tonight's... foresight.");
+        addNotification('Prep for tomorrow', 'low');
+      }
+    };
+    
+    const taskFunction = taskResponses[task.task];
+    if (taskFunction) {
+      taskFunction();
+    }
+    
+    setTimeout(() => {
+      setDaySchedule(prev => 
+        prev.map(t => t.id === task.id ? { ...t, status: 'completed' } : t)
+      );
+    }, 60000);
+  };
+
+  const proactiveMonitoring = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    
+    if (hours === 3 && minutes >= 45) {
+      const scenario = calculateMorningScenario();
+      if (scenario && scenario.status === 'emergency') {
+        addNotification('EMERGENCY: Consider Wayne Junction!', 'critical');
+        speak("EMERGENCY PROTOCOL: Current trajectory indicates schedule failure. Wayne Junction alternative route recommended.");
+      }
+    }
+  };
+
+  const addNotification = (message, priority) => {
+    const notification = {
+      id: Date.now(),
+      message,
+      priority,
+      timestamp: new Date().toLocaleTimeString(),
+      read: false
+    };
+    
+    setNotifications(prev => [notification, ...prev.slice(0, 9)]);
+  };
+
+  const handleTextCommand = (command) => {
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      text: command,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setChatHistory(prev => [userMessage, ...prev]);
+    
+    handleVoiceCommand(command.toLowerCase());
+    
+    setTimeout(() => {
+      const aiResponse = {
+        id: Date.now() + 1,
+        type: 'ai',
+        text: getTextResponse(command.toLowerCase()),
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setChatHistory(prev => [aiResponse, ...prev]);
+    }, 500);
+    
+    setTextInput('');
+  };
+
+  const getTextResponse = (command) => {
+    if (command.includes('status') || command.includes('time')) {
+      if (scenario) {
+        return sayerResponses.status(scenario.timeLeft, scenario.status);
+      }
+      return "Status monitoring requires active morning protocol, Resident.";
+    } else if (command.includes('weather')) {
+      if (realWeatherData) {
+        return sayerResponses.weather(realWeatherData.temp, realWeatherData.condition, realWeatherData.recommendation);
+      } else {
+        return sayerResponses.weather(currentWeather.temp, currentWeather.condition, currentWeather.recommendation);
+      }
+    } else if (command.includes('where am i') || command.includes('location')) {
+      if (currentLocation && nearestStation) {
+        return `Location acquired. Current position: ${nearestStation.name}, ${nearestStation.distance} meters away. GPS accuracy: ±${Math.round(currentLocation.accuracy)}m.`;
+      } else {
+        return "Position data unavailable. Location acquisition required, Resident.";
+      }
+    } else {
+      return sayerResponses.error;
+    }
+  };
+
   return (
     <div className={`min-h-screen text-white p-4 transition-all duration-1000 ${backgrounds[selectedBackground]}`}>
       <div className="max-w-md mx-auto">
@@ -944,109 +599,154 @@ const MorningAgent = () => {
           <div className="text-3xl font-mono">{formatTime(currentTime)}</div>
           <div className="text-xs text-gray-400 mt-1">
             SYSTEM STATUS: {autonomousMode ? 'AUTONOMOUS' : 'MANUAL'} | 
-            NOTIFICATIONS: {notifications.filter(n => !n.read).length}
+            GPS: {currentLocation ? 'ACTIVE' : 'INACTIVE'}
           </div>
         </div>
 
-        {/* Autonomous Control Panel */}
+        {/* Location Intelligence */}
         <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center">
-              <Brain className="w-5 h-5 mr-2" />
-              Autonomous Operations
+              <MapPin className="w-5 h-5 mr-2" />
+              Location Intelligence
             </h3>
             <button
-              onClick={() => {
-                setAutonomousMode(!autonomousMode);
-                speak(autonomousMode ? sayerResponses.autonomousOff() : sayerResponses.autonomousOn());
-              }}
-              className={`px-3 py-1 rounded-full text-xs transition-colors ${
-                autonomousMode 
-                  ? 'bg-red-600 text-white' 
-                  : 'bg-green-600 text-white'
-              }`}
+              onClick={getCurrentLocation}
+              disabled={isGettingLocation}
+              className="text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-2 py-1 rounded transition-colors"
             >
-              {autonomousMode ? 'DISABLE' : 'ENABLE'}
+              {isGettingLocation ? 'ACQUIRING...' : 'GET LOCATION'}
             </button>
           </div>
           
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className={`p-2 rounded ${autonomousMode ? 'bg-green-900' : 'bg-gray-700'}`}>
-              Schedule Monitoring: {autonomousMode ? 'ACTIVE' : 'OFFLINE'}
-            </div>
-            <div className={`p-2 rounded ${proactiveUpdates ? 'bg-green-900' : 'bg-gray-700'}`}>
-              Proactive Alerts: {proactiveUpdates ? 'ACTIVE' : 'OFFLINE'}
-            </div>
-          </div>
-        </div>
-
-        {/* Daily Schedule */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <h3 className="font-semibold mb-3 flex items-center">
-            <Calendar className="w-5 h-5 mr-2" />
-            Daily Schedule Protocol
-          </h3>
-          
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {daySchedule.map((task) => (
-              <div key={task.id} className={`p-2 rounded text-sm ${
-                task.status === 'completed' ? 'bg-green-900 bg-opacity-50' :
-                task.status === 'active' ? 'bg-yellow-900 bg-opacity-50' :
-                'bg-black bg-opacity-20'
-              }`}>
+          <div className="space-y-2">
+            {currentLocation ? (
+              <div className="p-2 bg-green-900 bg-opacity-30 rounded text-sm">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <span className="font-mono text-xs w-12">{task.time}</span>
-                    <span className={`ml-2 ${task.status === 'completed' ? 'line-through text-gray-400' : ''}`}>
-                      {task.task}
-                    </span>
+                  <div>
+                    <div className="font-bold">📍 Location Active</div>
+                    <div className="text-xs text-gray-300">
+                      Accuracy: ±{Math.round(currentLocation.accuracy)}m
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      task.priority === 'critical' ? 'bg-red-600' :
-                      task.priority === 'high' ? 'bg-orange-600' :
-                      task.priority === 'medium' ? 'bg-yellow-600' :
-                      'bg-gray-600'
-                    }`}>
-                      {task.priority.toUpperCase()}
-                    </span>
-                    <div className={`w-2 h-2 rounded-full ${
-                      task.status === 'completed' ? 'bg-green-500' :
-                      task.status === 'active' ? 'bg-yellow-500' :
-                      'bg-gray-500'
-                    }`} />
+                  <div className="text-xs text-gray-400">
+                    {currentLocation.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="p-2 bg-gray-900 bg-opacity-30 rounded text-sm">
+                <div className="text-gray-400">Location services inactive</div>
+                <div className="text-xs text-gray-500">
+                  Enable for enhanced route planning
+                </div>
+              </div>
+            )}
+            
+            {nearestStation && (
+              <div className="p-2 bg-blue-900 bg-opacity-30 rounded text-sm">
+                <div className="font-bold">🚂 Nearest Station</div>
+                <div className="flex items-center justify-between">
+                  <div>{nearestStation.name}</div>
+                  <div className="text-xs">
+                    {nearestStation.distance}m away
+                    <button
+                      onClick={() => openGoogleMapsDirections(nearestStation.name)}
+                      className="ml-2 text-blue-400 hover:text-blue-300"
+                    >
+                      Navigate →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Notifications Panel */}
-        {notifications.length > 0 && (
-          <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <Bell className="w-5 h-5 mr-2" />
-              System Notifications
-            </h3>
-            
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {notifications.slice(0, 5).map((notification) => (
-                <div key={notification.id} className={`p-2 rounded text-xs ${
-                  notification.priority === 'critical' ? 'bg-red-900 bg-opacity-50' :
-                  notification.priority === 'high' ? 'bg-orange-900 bg-opacity-50' :
-                  notification.priority === 'medium' ? 'bg-yellow-900 bg-opacity-50' :
-                  'bg-gray-900 bg-opacity-50'
+        {/* Voice Interface */}
+        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
+          <h3 className="font-semibold mb-3">Voice Interface Protocol</h3>
+          <button
+            onClick={startListening}
+            className={`w-full p-4 rounded-lg font-medium transition-colors ${
+              isListening 
+                ? 'bg-red-600 hover:bg-red-700' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {isListening ? (
+              <div className="flex items-center justify-center">
+                <MicOff className="w-5 h-5 mr-2" />
+                LISTENING...
+              </div>
+            ) : (
+              <div className="flex items-center justify-center">
+                <Mic className="w-5 h-5 mr-2" />
+                ACTIVATE VOICE INTERFACE
+              </div>
+            )}
+          </button>
+          
+          {lastCommand && (
+            <div className="mt-3 p-2 bg-black bg-opacity-40 rounded text-sm">
+              Last command: "{lastCommand}"
+            </div>
+          )}
+          
+          <div className="mt-3 text-xs text-gray-300">
+            Available commands: "Where am I", "Route to [destination]", "Navigate to [location]", "Nearest station", "Status report", "Weather"
+          </div>
+        </div>
+
+        {/* Text Interface */}
+        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
+          <h3 className="font-semibold mb-3 flex items-center">
+            <MessageSquare className="w-5 h-5 mr-2" />
+            Text Interface Protocol
+          </h3>
+          
+          {chatHistory.length > 0 && (
+            <div className="mb-3 h-32 overflow-y-auto space-y-2">
+              {chatHistory.slice(0, 6).reverse().map((message) => (
+                <div key={message.id} className={`p-2 rounded text-sm ${
+                  message.type === 'user' 
+                    ? 'bg-blue-900 bg-opacity-50 ml-4' 
+                    : 'bg-gray-900 bg-opacity-50 mr-4'
                 }`}>
-                  <div className="flex justify-between">
-                    <span>{notification.message}</span>
-                    <span className="text-gray-400">{notification.timestamp}</span>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs text-gray-400">
+                      {message.type === 'user' ? 'RESIDENT' : 'MORNING CONTROL'}
+                    </span>
+                    <span className="text-xs text-gray-500">{message.timestamp}</span>
                   </div>
+                  <div className="mt-1">{message.text}</div>
                 </div>
               ))}
             </div>
+          )}
+          
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && textInput.trim() && handleTextCommand(textInput)}
+              placeholder="Enter command..."
+              className="flex-1 p-3 rounded bg-white bg-opacity-20 text-white placeholder-gray-400 text-sm"
+            />
+            <button
+              onClick={() => textInput.trim() && handleTextCommand(textInput)}
+              disabled={!textInput.trim()}
+              className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded transition-colors"
+            >
+              <Send className="w-4 h-4" />
+            </button>
           </div>
-        )}
+          
+          <div className="mt-2 text-xs text-gray-300">
+            Type commands like: "where am i", "weather", "status report"
+          </div>
+        </div>
 
         {/* Settings */}
         <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
@@ -1087,354 +787,6 @@ const MorningAgent = () => {
             </div>
           </div>
         </div>
-
-        {/* Morning Scenario */}
-        {scenario && (
-          <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-            <h2 className="text-lg font-semibold mb-3 flex items-center">
-              <Clock className="w-5 h-5 mr-2" />
-              Morning Status
-            </h2>
-            <div className={`text-lg font-bold mb-2 ${getStatusColor(scenario.status)}`}>
-              {scenario.status === 'good' && 'TEMPORAL COMPLIANCE: OPTIMAL ✓'}
-              {scenario.status === 'rushed' && 'TEMPORAL COMPLIANCE: SUBOPTIMAL ⚡'}
-              {scenario.status === 'emergency' && 'TEMPORAL COMPLIANCE: CRITICAL 🚨'}
-            </div>
-            <div className="space-y-2 text-sm">
-              <div>Temporal allocation remaining: <span className="font-bold">{scenario.timeLeft} minutes</span></div>
-              <div>Required departure time: <span className="font-bold">{scenario.leaveBy}</span></div>
-              <div>Transport departure: <span className="font-bold">{scenario.trainTime}</span></div>
-              <div>Protocol execution time: <span className="font-bold">{scenario.routineTime} minutes</span></div>
-            </div>
-          </div>
-        )}
-
-        {/* Media Control Panel */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <h3 className="font-semibold mb-3 flex items-center">
-            <Headphones className="w-5 h-5 mr-2" />
-            Audio Control Protocol
-          </h3>
-          
-          {/* Current Media Info */}
-          <div className="mb-3 p-2 bg-black bg-opacity-20 rounded text-sm">
-            <div className="font-medium">Current Audio Status:</div>
-            <div>App: {mediaState.currentApp}</div>
-            <div>Track: {mediaState.currentTrack}</div>
-            <div>Status: {mediaState.isPlaying ? 'PLAYING' : 'PAUSED'}</div>
-          </div>
-          
-          {/* Quick Launch Buttons */}
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <button
-              onClick={mediaControls.openPodcastApp}
-              className="p-2 bg-purple-600 hover:bg-purple-700 rounded text-sm transition-colors"
-            >
-              📻 PODCAST APP
-            </button>
-            <button
-              onClick={mediaControls.openMusicApp}
-              className="p-2 bg-green-600 hover:bg-green-700 rounded text-sm transition-colors"
-            >
-              🎵 MUSIC APP
-            </button>
-          </div>
-          
-          {/* Media Controls */}
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <button
-              onClick={mediaControls.previous}
-              className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded transition-colors"
-            >
-              <SkipBack className="w-4 h-4" />
-            </button>
-            <button
-              onClick={mediaState.isPlaying ? mediaControls.pause : mediaControls.play}
-              className="p-3 bg-blue-600 hover:bg-blue-700 rounded-full transition-colors"
-            >
-              {mediaState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={mediaControls.next}
-              className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded transition-colors"
-            >
-              <SkipForward className="w-4 h-4" />
-            </button>
-          </div>
-          
-          {/* Volume Control */}
-          <div className="flex items-center gap-2">
-            <Volume2 className="w-4 h-4" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={mediaState.volume}
-              onChange={(e) => mediaControls.setVolume(parseInt(e.target.value))}
-              className="flex-1 h-2 bg-white bg-opacity-20 rounded-lg appearance-none"
-            />
-            <span className="text-xs w-8">{mediaState.volume}%</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-3">
-            <div className="flex items-center mb-2">
-              <Sun className="w-4 h-4 mr-2" />
-              <span className="text-sm font-medium">Weather</span>
-            </div>
-            <div className="text-lg font-bold">{currentWeather.temp}°F</div>
-            <div className="text-xs text-gray-300">{currentWeather.condition}</div>
-            {realWeatherData && (
-              <div className="text-xs text-blue-300">Real-time data</div>
-            )}
-          </div>
-          
-          <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-3">
-            <div className="flex items-center mb-2">
-              <Train className="w-4 h-4 mr-2" />
-              <span className="text-sm font-medium">Train</span>
-            </div>
-            <div className="text-lg font-bold">{formatStaticTime('4:25 AM')}</div>
-            <div className="text-xs text-gray-300">
-              {currentTrainStatus.onTime ? 'On time' : `${currentTrainStatus.delay}min delay`}
-            </div>
-            {realTrainData && (
-              <div className="text-xs text-blue-300">Real-time data</div>
-            )}
-          </div>
-        </div>
-
-        {/* Real Data Controls */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <h3 className="font-semibold mb-3">Real-Time Data Acquisition</h3>
-          <button
-            onClick={fetchRealData}
-            disabled={dataLoading}
-            className={`w-full p-3 rounded-lg font-medium transition-colors ${
-              dataLoading 
-                ? 'bg-gray-600 cursor-not-allowed' 
-                : 'bg-green-600 hover:bg-green-700'
-            }`}
-                      >
-            {dataLoading ? 'ACQUIRING DATA...' : 'INITIATE DATA REFRESH'}
-          </button>
-          
-          {(realWeatherData || realTrainData) && (
-            <div className="mt-3 space-y-2 text-sm">
-              {realWeatherData && (
-                <div className="p-2 bg-black bg-opacity-40 rounded">
-                  <div className="font-medium">Weather Details:</div>
-                  <div>Feels like: {realWeatherData.feelsLike}°F</div>
-                  <div>Wind: {realWeatherData.windSpeed} mph</div>
-                  <div>Humidity: {realWeatherData.humidity}%</div>
-                  <div className="text-yellow-300">{realWeatherData.recommendation}</div>
-                  <div className="text-xs text-gray-400">Updated: {realWeatherData.lastUpdated}</div>
-                </div>
-              )}
-              
-              {realTrainData && (
-                <div className="p-2 bg-black bg-opacity-40 rounded">
-                  <div className="font-medium">Train Status:</div>
-                  <div>Current: {realTrainData.currentLocation}</div>
-                  <div>Next: {realTrainData.nextStop}</div>
-                  {realTrainData.delay > 0 && (
-                    <div className="text-yellow-300">Delay: {realTrainData.delay} minutes</div>
-                  )}
-                  <div className="text-xs text-gray-400">Updated: {realTrainData.lastUpdated}</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Night Prep Checklist */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold">Evening Preparation Protocol</h3>
-            <button
-              onClick={() => setIsAddingItem(!isAddingItem)}
-              className="text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors"
-            >
-              {isAddingItem ? 'Cancel' : '+ Add'}
-            </button>
-          </div>
-          
-          {isAddingItem && (
-            <div className="mb-3 p-2 bg-black bg-opacity-40 rounded">
-              <input
-                type="text"
-                value={newItemText}
-                onChange={(e) => setNewItemText(e.target.value)}
-                placeholder="New prep item..."
-                className="w-full p-2 rounded bg-white bg-opacity-20 text-white placeholder-gray-400 text-sm"
-                onKeyPress={(e) => e.key === 'Enter' && addPrepItem()}
-              />
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={addPrepItem}
-                  className="flex-1 bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-xs transition-colors"
-                >
-                  Add Item
-                </button>
-              </div>
-            </div>
-          )}
-          
-          <div className="space-y-2">
-            {prepItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-2 bg-black bg-opacity-20 rounded">
-                <button
-                  onClick={() => togglePrepItem(item.id)}
-                  className="flex items-center flex-1 text-left"
-                >
-                  <div className={`w-5 h-5 rounded border-2 mr-3 flex items-center justify-center transition-colors ${
-                    item.completed 
-                      ? 'bg-green-500 border-green-500' 
-                      : 'border-gray-400 hover:border-white'
-                  }`}>
-                    {item.completed && <CheckCircle className="w-3 h-3 text-white" />}
-                  </div>
-                  <div className="flex-1">
-                    <span className={`text-sm ${item.completed ? 'line-through text-gray-400' : ''}`}>
-                      {item.text}
-                    </span>
-                    <div className="text-xs text-gray-500">
-                      Saves ~{item.timesSaved} min
-                    </div>
-                  </div>
-                </button>
-                
-                <div className="flex gap-1">
-                  <input
-                    type="number"
-                    value={item.timesSaved}
-                    onChange={(e) => updateItemTimeSaved(item.id, parseInt(e.target.value) || 0)}
-                    className="w-8 h-6 text-xs text-center bg-white bg-opacity-20 rounded border-none text-white"
-                    min="0"
-                    max="60"
-                  />
-                  <button
-                    onClick={() => removePrepItem(item.id)}
-                    className="text-red-400 hover:text-red-300 text-xs px-1"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="mt-3 p-2 bg-blue-900 bg-opacity-30 rounded text-xs">
-            <div className="font-medium">Potential Time Savings:</div>
-            <div>
-              Completed: {prepItems.filter(item => item.completed).reduce((sum, item) => sum + item.timesSaved, 0)} min saved
-            </div>
-            <div>
-              Remaining: {prepItems.filter(item => !item.completed).reduce((sum, item) => sum + item.timesSaved, 0)} min available
-            </div>
-          </div>
-        </div>
-
-        {/* Voice Interface */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <h3 className="font-semibold mb-3">Voice Interface Protocol</h3>
-          <button
-            onClick={startListening}
-            className={`w-full p-4 rounded-lg font-medium transition-colors ${
-              isListening 
-                ? 'bg-red-600 hover:bg-red-700' 
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isListening ? (
-              <div className="flex items-center justify-center">
-                <MicOff className="w-5 h-5 mr-2" />
-                LISTENING...
-              </div>
-            ) : (
-              <div className="flex items-center justify-center">
-                <Mic className="w-5 h-5 mr-2" />
-                ACTIVATE VOICE INTERFACE
-              </div>
-            )}
-          </button>
-          
-          {lastCommand && (
-            <div className="mt-3 p-2 bg-black bg-opacity-40 rounded text-sm">
-              Last command: "{lastCommand}"
-            </div>
-          )}
-          
-          <div className="mt-3 text-xs text-gray-300">
-            Available commands: "Where am I", "Route to [destination]", "Navigate to [location]", "Nearest station", "System status", "Current location"
-          </div>
-        </div>
-
-        {/* Text Interface */}
-        <div className="bg-black bg-opacity-30 backdrop-blur-sm rounded-lg p-4 mb-4">
-          <h3 className="font-semibold mb-3 flex items-center">
-            <MessageSquare className="w-5 h-5 mr-2" />
-            Text Interface Protocol
-          </h3>
-          
-          {/* Chat History */}
-          {chatHistory.length > 0 && (
-            <div className="mb-3 h-32 overflow-y-auto space-y-2">
-              {chatHistory.slice(0, 6).reverse().map((message) => (
-                <div key={message.id} className={`p-2 rounded text-sm ${
-                  message.type === 'user' 
-                    ? 'bg-blue-900 bg-opacity-50 ml-4' 
-                    : 'bg-gray-900 bg-opacity-50 mr-4'
-                }`}>
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs text-gray-400">
-                      {message.type === 'user' ? 'RESIDENT' : 'MORNING CONTROL'}
-                    </span>
-                    <span className="text-xs text-gray-500">{message.timestamp}</span>
-                  </div>
-                  <div className="mt-1">{message.text}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          {/* Text Input */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && textInput.trim() && handleTextCommand(textInput)}
-              placeholder="Enter command..."
-              className="flex-1 p-3 rounded bg-white bg-opacity-20 text-white placeholder-gray-400 text-sm"
-            />
-            <button
-              onClick={() => textInput.trim() && handleTextCommand(textInput)}
-              disabled={!textInput.trim()}
-              className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded transition-colors"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-          
-          <div className="mt-2 text-xs text-gray-300">
-            Type commands like: "status report", "weather", "autonomous on"
-          </div>
-        </div>
-
-        {/* Emergency Protocol Alert */}
-        {scenario && scenario.status === 'emergency' && (
-          <div className="bg-red-900 border border-red-500 rounded-lg p-4">
-            <div className="flex items-center mb-2">
-              <AlertTriangle className="w-5 h-5 mr-2" />
-              <span className="font-bold">EMERGENCY PROTOCOL ACTIVE</span>
-            </div>
-            <div className="text-sm">
-              Temporal compliance failure detected. Alternative route via Wayne Junction station recommended. 
-              Primary transport: {formatStaticTime('4:25 AM')} | Secondary transport: {formatStaticTime('4:55 AM')}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
