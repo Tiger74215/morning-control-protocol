@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "usage": "node usage.js"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "next": "^13.4.0",
-    "lucide-react": "^0.263.1"
+    "lucide-react": "^0.263.1",
+    "better-sqlite3": "^8.6.0"
   },
   "devDependencies": {
     "tailwindcss": "^3.3.0",
